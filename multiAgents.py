@@ -14,8 +14,6 @@
 
 from game import Directions
 import random, util
-from util import manhattanDist
-
 
 from game import Agent
 from pacman import GameState
@@ -69,50 +67,66 @@ class ReflexAgent(Agent):
         to create a masterful evaluation function.
         """
         # Useful information you can extract from a GameState (pacman.py)
-        successorGameState = currentGameState.generatePacmanSuccessor(action)
+        successorGameState = currentGameState.generatePacmanSuccessor(action) # currentGameState에서 action을 취했을 때의 다음 상태
         newPos = successorGameState.getPacmanPosition()
-        newFood = successorGameState.getFood() 
+        newFood = successorGameState.getFood()
         newGhostStates = successorGameState.getGhostStates()
-        newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
+        newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates] # 각 유령이 얼마나 오랫동안 겁먹은 상태로 남아있는지 나타내는 리스트. 유령이 겁먹은 상태에서는 유령을 먹을 수 있음.
 
         "*** YOUR CODE HERE ***"
-        score = successorGameState.getScore()
         
+        score = successorGameState.getScore()
+        foodList = newFood.asList()
 
-        # 1. 멈추는 행동은 감점
+        # 1. 멈추면 감점 
         if action == Directions.STOP:
             score -= 50
+        
+        # 2. Power pellet은 무조건 먹으면 좋다
+        powerPellets = currentGameState.getCapsules()
+        if powerPellets:
+            powerDistances = [util.manhattanDist(newPos, capsulePos) for capsulePos in powerPellets]
+            minPowerDist = min(powerDistances) # 항상 하나밖에 없는 거면 이거 수정해도 됨
+            score += 50.0 / (minPowerDist + 1)
+            if len(foodList) < 10: # 곧 끝날 것 같으면 파워필렛을 더 강하게 먹는게 좋음
+                score += 300.0 / (len(foodList)+1) / (minPowerDist + 1)
 
-        # 2. 가장 가까운 음식이 가까울수록 좋게
-        foodList = newFood.asList()
+
+        # 3. 가장 가까운 음식이 가까울수록 좋게
         if foodList:
             foodDistances = [util.manhattanDist(newPos, foodPos) for foodPos in foodList]
             minFoodDist = min(foodDistances)
-            score += 20.0 / (minFoodDist + 1)
-
-        # 남아있는 음식 개수가 적을수록 좋음
-        score -= 5 * len(foodList) 
-
-        # 3. 유령 관련 스코어 계산
+            score += 30.0 / (minFoodDist+1)
+            
+            # 근처 음식 군집 감지: 현재 위치 근처(거리 4 이내)의 음식 개수
+            nearby_food_count = sum(1 for dist in foodDistances if dist <= 4)
+            score += 0.1 * nearby_food_count  # 군집이 클수록 더 높은 점수
+            
+        # 남아있는 음식 개수가 적을수록 좋음 
+        score -= 5 * len(foodList)
+        
+        # 4. 유령 관련 스코어 계산
         for i, ghostState in enumerate(newGhostStates):
             ghostPos = ghostState.getPosition()
             ghostDist = util.manhattanDist(newPos, ghostPos)
-            scaredTime = newScaredTimes[i]
+            scaredTime = newScaredTimes[i] 
+            
+            if scaredTime > 0: 
+                score += 10.0 / (ghostDist+1)
+                # 끝나기까지 얼마 안남았으면 무조건 유령 먹어라!! 
+                if len(foodList) < 10: # 곧 끝날 것 같으면 유령을 더 강하게 먹는게 좋음
+                    score += 500.0 / (len(foodList)+1) / (ghostDist + 1)
 
-            if scaredTime > 0:
-                # scared ghost는 가까우면 더 좋음 - 점수를 따야 하니까!
-                score += 10.0 / (ghostDist + 1)
-            else:
-                # 일반 ghost는 피해야 함
+            else: 
                 if ghostDist <= 1:
-                    score -= 500  # 충돌 위험
-                elif ghostDist <= 3:
-                    score -= 25.0 / ghostDist  # 가까우면 피함
+                    score -= 500
+                elif ghostDist <=3:
+                    score -= 35.0 / ghostDist
                 else:
-                    score -= 5.0 / ghostDist  # 멀면 약하게
-
+                    score -= 5.0 / ghostDist
+                    
         return score
-
+    
 def scoreEvaluationFunction(currentGameState: GameState):
     """
     This default evaluation function just returns the score of the state.
